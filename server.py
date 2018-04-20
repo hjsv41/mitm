@@ -7,16 +7,20 @@ ssock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
 ssock.bind(ADDR)
 ssock.listen(2)
 
-while 1:
-    print "no conn"
-    csock, addr = ssock.accept()
-    print "connected from ", addr
-
+try:
     while 1:
-        data = csock.recv(BUFSIZ)
-        if not data:
-            break
-        csock.send("echoed "  data)
+        print "no conn"
+        csock, addr = ssock.accept()
+        print "connected from ", addr
 
-    csock.close()
-ssock.close()
+        while 1:
+            data = csock.recv(BUFSIZ)
+            if not data:
+                break
+            csock.send("echoed " + data)
+
+        csock.close()
+except (Exception, KeyboardInterrupt):
+    pass
+finally:
+    ssock.close()
