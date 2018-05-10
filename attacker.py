@@ -105,21 +105,23 @@ class Mitm_Thread(threading.Thread):
         while self.stop.wait(0):
             sp.sniff(filter=bpf_filter, timeout=5, prn=lambda pkt: self.q.put(pkt))
         self.q.put("exit")
-    def pkt_handler( self):   
+    def pkt_handler( self):
+        s = sp.conf.L2socket()
         while 1:
             pkt = self.q.get()
             if pkt == "exit": break
-            threading.Thread(target = self.forward, args = (pkt, )).start()
+            self.forward(pkt, s, )
+            #threading.Thread(target = self.forward, args = (pkt, s, )).start()
+        s.close()
 
-    def forward(self, pkt, ):
+    def forward(self, pkt, s, ):
         if pkt.haslayer(sp.IP):
-            ip = pkt.getlayer(sp.IP)
             get_mac = lambda x: info.arp_table.get(x, info.arp_table[info.gIP])
-            ether = sp.Ether(dst=get_mac(ip.dst))
-            if pkt.haslayer(sp.ICMP):
-                pkt.show()
-            sp.sendp(ether/ip)
-
+            pkt[sp.Ether].dst = get_mac(pkt[sp.IP].dst)
+            pkt[sp.Ether].src = info.mac
+            s.send(pkt) # equivlant to sp.sendp(pkt)
+            # sp.sendp(pkt)
+           
 
 
 print "newstfsdt"
